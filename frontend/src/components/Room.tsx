@@ -1,5 +1,6 @@
 import React, { FC, useEffect, useRef, useState } from 'react';
 import { IMessage } from '../types/types';
+import './Room.css';
 
 const Room: FC = () => {
    const [messages, setMessages] = useState<IMessage[]>([]);
@@ -72,19 +73,24 @@ const Room: FC = () => {
    };
 
    return (
-      <div>
+      <div className='messages'>
          <h1>WebSocket Chat</h1>
-         <div className="messages-container" style={{ maxHeight: '400px', overflowY: 'scroll' }}>
+         <div className="messages-container">
             {messages.map((msg, index) => (
-               <div key={index} className="message" style={{ textAlign: msg.isMine ? 'right' : 'left', color: msg.isMine ? 'blue' : 'black' }}>{msg.text}</div>
+               <div key={index} className={`message-item ${msg.isMine ? 'message-item__mine' : 'message-item__other'}`}>
+                  <p className={`message-item__text ${msg.isMine ? 'message-item__text--mine' : 'message-item__text--other'}`}>{msg.text}</p>
+               </div>
             ))}
          </div>
-         <input 
-            value={input} 
-            onChange={(e) => setInput(e.target.value)} 
-            placeholder="Введите сообщение"
-         />
-         <button onClick={sendMessage}>Отправить</button>
+         <div className="messages-input-container">
+            <input 
+               value={input} 
+               onChange={(e) => setInput(e.target.value)}
+               className='messages-input'
+               placeholder="Введите сообщение"
+            />
+            <button className='messages-button' onClick={sendMessage}>Отправить</button>
+         </div>
       </div>
    );
 };
