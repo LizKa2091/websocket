@@ -3,7 +3,8 @@ const PORT = 8082;
 const CLIENT = {
    MESSAGE: {
       NEW_USER: 'NEW_USER',
-      NEW_MESSAGE: 'NEW_MESSAGE'
+      NEW_MESSAGE: 'NEW_MESSAGE',
+      JOIN_ROOM: 'JOIN_ROOM',
    }
 };
 

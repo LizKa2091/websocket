@@ -1,12 +1,14 @@
 import React, { FC, useEffect, useRef, useState } from 'react';
 import { IMessage } from '../types/types';
-import './Room.css';
+import { useParams } from 'react-router-dom';
+import './Room.scss';
 
 const Room: FC = () => {
    const [messages, setMessages] = useState<IMessage[]>([]);
    const [input, setInput] = useState<string>('');
    const [socket, setSocket] = useState<WebSocket | null>(null);
    const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+   const { roomId } = useParams();
    const lastSentMessage = useRef<string | null>(null);
 
    useEffect(() => {
@@ -16,6 +18,7 @@ const Room: FC = () => {
       ws.onopen = () => {
          console.log('WebSocket connection established');
          ws.send(JSON.stringify({ type: 'CLIENT.MESSAGE.NEW_USER', payload: { username: 'new unnamed user' } }));
+         ws.send(JSON.stringify({ type: 'CLIENT.MESSAGE.JOIN_ROOM', payload: { roomId } }));
       };
 
       ws.onmessage = (messageEvent) => {
@@ -34,7 +37,6 @@ const Room: FC = () => {
                   lastSentMessage.current = null;
                   return;
                }
-
                showMessageReceived(payload.message, false);
                break;
             default:
@@ -48,7 +50,7 @@ const Room: FC = () => {
       ws.onerror = (event) => console.error('WebSocket error observed:', event);
 
       return () => ws.close();
-   }, [currentUserId]);
+   }, [roomId]);
 
    const sendMessage = () => {
       if (socket && socket.readyState === WebSocket.OPEN && input.trim()) {
@@ -74,7 +76,7 @@ const Room: FC = () => {
 
    return (
       <div className='messages'>
-         <h1>WebSocket Chat</h1>
+         <h1>WebSocket Chat, room: {roomId}</h1>
          <div className="messages-container">
             {messages.map((msg, index) => (
                <div key={index} className={`message-item ${msg.isMine ? 'message-item__mine' : 'message-item__other'}`}>

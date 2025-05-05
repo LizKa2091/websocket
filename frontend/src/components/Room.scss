@@ -1,0 +1,58 @@
+.messages {
+   display: flex;
+   flex-direction: column;
+   max-height: 400px;
+   max-width: 75dvw;
+   overflow-y: auto;
+   margin: 0 auto;
+   gap: 10px;
+
+   &-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+   }
+   &-input {
+      border-width: 1px;
+      border-radius: 12px 0 0 12px; 
+      font-size: 1.25rem;
+      width: 80%;
+      height: 54px;
+      padding: 10px;
+
+      &-container {
+         display: flex;
+      }
+   }
+   &-button {
+      border-width: 1px;
+      border-radius: 0 12px 12px 0; 
+      width: 20%;
+      height: 54px;
+      cursor: pointer;
+   }
+}
+.message {
+   &-item {
+      display: flex;
+
+      &__mine {
+         justify-content: flex-end;
+      }
+      &__other {
+         color: white;
+      }
+      &__text {
+         border-radius: 12px;
+         width: max-content;
+         padding: 10px;
+
+         &--mine {
+            background-color: blanchedalmond;
+         }
+         &--other {
+            background-color: black;
+         }
+      }
+   }
+}

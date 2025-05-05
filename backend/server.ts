@@ -4,9 +4,10 @@ import * as path from 'path';
 import { WebSocketServer } from 'ws';
 
 const CONSTANTS = require('./utils/constants.ts');
-const { PORT, CLIENT } = CONSTANTS;
+const { PORT } = CONSTANTS;
 
-let nextPlayerIndex: number = 0;
+let nextMemberIndex: number = 0;
+const rooms: Record<string, WebSocket[]> = {};
 
 type WebSocket = import('ws').WebSocket;
 
@@ -26,11 +27,12 @@ const server = http.createServer((req, res) => {
 
    fs.readFile(fullPath, (err, content) => {
       if (err) {
-          res.writeHead(404, { 'Content-Type': 'text/plain' });
-          res.end('404 Not Found');
-      } else {
-          res.writeHead(200, { 'Content-Type': contentType });
-          res.end(content);
+         res.writeHead(404, { 'Content-Type': 'text/plain' });
+         res.end('404 Not Found');
+      } 
+      else {
+         res.writeHead(200, { 'Content-Type': contentType });
+         res.end(content);
       }
   });
 });
@@ -41,6 +43,7 @@ const wsServer = new WebSocketServer({ server: server });
 
 wsServer.on('connection', (socket: WebSocket) => {
    console.log('a new client has joined the server');
+   let currentRoom: string | null = null;
    socket.on('message', (data) => {
       const message = typeof data === 'string' ? data : data.toString();
          try {
@@ -51,22 +54,32 @@ wsServer.on('connection', (socket: WebSocket) => {
                case 'CLIENT.MESSAGE.NEW_USER':
                   handleNewUser(socket);
                   break;
-               case 'CLIENT.MESSAGE.NEW_MESSAGE':
-                  const serverMessage = JSON.stringify({
-                     type: 'SERVER.MESSAGE.NEW_MESSAGE',
-                     payload: {
-                        message: payload.message,
-                        timestamp: payload.timestamp,
-                        senderId: nextPlayerIndex,
-                     }
-                  });
-
-                  wsServer.clients.forEach((client) => {
-                     if (client.readyState === WebSocket.OPEN) {
-                        client.send(serverMessage);
-                     }
-                  });
+               case 'CLIENT.MESSAGE.JOIN_ROOM':
+                  currentRoom = payload.roomId;
+                  if (currentRoom && !rooms[currentRoom]) {
+                     rooms[currentRoom] = [];
+                  }
+                  if (currentRoom) {
+                     rooms[currentRoom].push(socket);
+                  }
                   break;
+               case 'CLIENT.MESSAGE.NEW_MESSAGE':
+                  if (currentRoom) {
+                     const serverMessage = JSON.stringify({
+                        type: 'SERVER.MESSAGE.NEW_MESSAGE',
+                        payload: {
+                           message: payload.message,
+                           timestamp: payload.timestamp,
+                           senderId: nextMemberIndex,
+                        }
+                     });
+                     rooms[currentRoom].forEach((client) => {
+                        if (client.readyState === WebSocket.OPEN) {
+                           client.send(serverMessage);
+                        }
+                     });
+                 }
+                 break;
                default:
                   broadcast(data.toString(), socket)
                   break;
@@ -75,6 +88,14 @@ wsServer.on('connection', (socket: WebSocket) => {
          catch (error) {
             console.error('Error parsing message:', error);
          }
+   });
+   socket.on('close', () => {
+      if (currentRoom && rooms[currentRoom]) {
+         rooms[currentRoom] = rooms[currentRoom].filter(client => client !== socket);
+         if (rooms[currentRoom].length === 0) {
+            delete rooms[currentRoom];
+         }
+      }
    });
 });
 
@@ -89,17 +110,15 @@ function broadcast(data: string, socketToOmit: WebSocket) {
 };
 
 function handleNewUser(socket: WebSocket) {
-   // max 6 users
-   if (nextPlayerIndex < 6) {
-     socket.send(JSON.stringify({ type: 'SERVER.MESSAGE.PLAYER_ASSIGNMENT', payload: {clientPlayerIndex: nextPlayerIndex} }))
+   // max 6 members
+   if (nextMemberIndex < 6) {
+     socket.send(JSON.stringify({ type: 'SERVER.MESSAGE.PLAYER_ASSIGNMENT', payload: {clientPlayerIndex: nextMemberIndex} }))
      
-     nextPlayerIndex++;
+     nextMemberIndex++;
    } 
-   
-   // If 6 users already in room, room is full
+   // If 6 members already in room, room is full
    else {
      socket.send(JSON.stringify({ type: 'SERVER.MESSAGE.ROOM_FULL' }))
- 
    }
  }
  
