@@ -1,9 +1,22 @@
-.menu {
+@mixin menu-common-styles {
    display: flex;
    justify-content: center;
    flex-direction: column;
    align-items: center;
-   max-width: 550px;
-   margin: 10px auto;
    gap: 10px;
+}
+
+.menu {
+   &__step1-form {
+      @include menu-common-styles;
+      margin-top: 10px;
+   }
+   &__step2 {
+      @include menu-common-styles;
+      margin-top: 10px;
+
+      &-form {
+         @include menu-common-styles;
+      }
+   }
 }
