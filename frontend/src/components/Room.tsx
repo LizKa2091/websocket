@@ -1,99 +1,151 @@
-import React, { FC, useEffect, useRef, useState } from 'react';
+import React, { FC, useState } from 'react';
 import { IMessage } from '../types/types';
 import { useParams } from 'react-router-dom';
 import './Room.scss';
 
 const Room: FC = () => {
    const [messages, setMessages] = useState<IMessage[]>([]);
-   const [input, setInput] = useState<string>('');
+   const [input, setInput] = useState('');
    const [socket, setSocket] = useState<WebSocket | null>(null);
-   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+   const [users, setUsers] = useState<string[]>([]);
+   const [username, setUsername] = useState('');
+   const [showUsernameForm, setShowUsernameForm] = useState(true);
+   const [error, setError] = useState('');
    const { roomId } = useParams();
-   const lastSentMessage = useRef<string | null>(null);
 
-   useEffect(() => {
+   const handleUsernameSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      
+      if (!username.trim()) {
+         setError('Никнейм не может быть пустым');
+         return;
+      }
+      
+      if (username.length < 4) {
+         setError('Никнейм должен содержать минимум 4 символа');
+         return;
+      }
+      
+      setError('');
+      setShowUsernameForm(false);
+      initializeWebSocket();
+   };
+
+   const initializeWebSocket = () => {
       const ws = new WebSocket('ws://localhost:8082');
       setSocket(ws);
 
       ws.onopen = () => {
-         console.log('WebSocket connection established');
-         ws.send(JSON.stringify({ type: 'CLIENT.MESSAGE.NEW_USER', payload: { username: 'new unnamed user' } }));
-         ws.send(JSON.stringify({ type: 'CLIENT.MESSAGE.JOIN_ROOM', payload: { roomId } }));
+         ws.send(JSON.stringify({
+               type: 'CLIENT.MESSAGE.NEW_USER',
+               payload: { username, roomId }
+         }));
       };
 
       ws.onmessage = (messageEvent) => {
-         console.log('Received message:', messageEvent.data);
-
          const { type, payload } = JSON.parse(messageEvent.data);
+         
          switch (type) {
-            case 'SERVER.MESSAGE.PLAYER_ASSIGNMENT':
-               setCurrentUserId(payload.clientPlayerIndex);
-               break;
-            case 'SERVER.MESSAGE.ROOM_FULL':
-               console.log('Извините, в текущей комнате нет свободных мест');
-               break;
             case 'SERVER.MESSAGE.NEW_MESSAGE':
-               if (payload.message === lastSentMessage.current) {
-                  lastSentMessage.current = null;
-                  return;
+               if (payload.senderNickname === username) {
+                  break;
                }
-               showMessageReceived(payload.message, false);
+               setMessages(prev => [...prev, {
+                  text: payload.message,
+                  isMine: false,
+                  senderNickname: payload.senderNickname
+               }]);
                break;
-            default:
-               console.log('Неизвестный тип сообщения');
+
+            case 'SERVER.MESSAGE.USER_LIST':
+               setUsers(payload.users);
+               break;
+
+            case 'SERVER.MESSAGE.USER_JOINED':
+               setUsers(prev => [...prev, payload.username]);
+               break;
+
+            case 'SERVER.MESSAGE.USER_LEFT':
+               setUsers(prev => prev.filter(u => u !== payload.username));
                break;
          }
       };
 
       ws.onclose = () => console.log('WebSocket connection closed');
-
-      ws.onerror = (event) => console.error('WebSocket error observed:', event);
-
-      return () => ws.close();
-   }, [roomId]);
+      ws.onerror = (err) => console.error('WebSocket error:', err);
+   };
 
    const sendMessage = () => {
-      if (socket && socket.readyState === WebSocket.OPEN && input.trim()) {
-         const messageData = {
-            type: 'CLIENT.MESSAGE.NEW_MESSAGE',
-            payload: { message: input, timestamp: Date.now() }
-         };
+      if (!socket || !input.trim()) return;
 
-         lastSentMessage.current = input;
+      const messageData = {
+         type: 'CLIENT.MESSAGE.NEW_MESSAGE',
+         payload: { message: input, timestamp: Date.now() }
+      };
 
-         showMessageReceived(input, true);
-         socket.send(JSON.stringify(messageData));
-         setInput('');
-      }
-      else {
-         console.error('WebSocket is not open or input is empty');
-      }
+      const newMessage = {
+         text: input,
+         isMine: true,
+         senderNickname: username
+      };
+      setMessages(prev => [...prev, newMessage]);
+      
+      socket.send(JSON.stringify(messageData));
+      setInput('');
    };
 
-   const showMessageReceived = (text: string, isMine: boolean) => {
-      setMessages((prevMessages) => [...prevMessages, { text, isMine }]);
-   };
+   if (showUsernameForm) {
+      return (
+         <div className="username-form">
+            <h2>Введите ваш никнейм</h2>
+            <form onSubmit={handleUsernameSubmit}>
+               <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Ваш никнейм"
+                  className="username-input"
+               />
+               {error && <p className="error-message">{error}</p>}
+               <button type="submit" className="submit-button">
+                  Продолжить
+               </button>
+            </form>
+         </div>
+      );
+   }
 
    return (
-      <div className='messages'>
-         <h1>WebSocket Chat, room: {roomId}</h1>
-         <div className="messages-container">
-            {messages.map((msg, index) => (
-               <div key={index} className={`message-item ${msg.isMine ? 'message-item__mine' : 'message-item__other'}`}>
-                  <p className={`message-item__text ${msg.isMine ? 'message-item__text--mine' : 'message-item__text--other'}`}>{msg.text}</p>
+      <div className='room'>
+         <h2>Комната: {roomId}</h2>
+         <div className="users-list">
+            <h3>Участники:</h3>
+               <ul>
+                  <li key="you">Вы: {username}</li>
+                  {users.map((user, index) => (
+                     <li key={index}>{user}</li>
+                  ))}
+               </ul>
+         </div>
+         <div className="messages">
+            {messages.map((msg, idx) => (
+               <div key={idx} className={`message ${msg.isMine ? 'mine' : 'other'}`}>
+                  <span className="sender">{msg.senderNickname}</span>
+                  <p>{msg.text}</p>
                </div>
             ))}
          </div>
-         <div className="messages-input-container">
-            <input 
-               value={input} 
+         <div className="message-input">
+            <input
+               value={input}
                onChange={(e) => setInput(e.target.value)}
-               className='messages-input'
                placeholder="Введите сообщение"
+               onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
             />
-            <button className='messages-button' onClick={sendMessage}>Отправить</button>
+            <button onClick={sendMessage}>Отправить</button>
          </div>
       </div>
    );
 };
+
 export default Room;

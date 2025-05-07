@@ -40,10 +40,13 @@ const server = http.createServer((req, res) => {
 ////////////////// WS LOGIC ///////////////////
 
 const wsServer = new WebSocketServer({ server: server });
+const userNicknames = new Map<WebSocket, string>();
 
 wsServer.on('connection', (socket: WebSocket) => {
    console.log('a new client has joined the server');
    let currentRoom: string | null = null;
+   let currentUsername: string | null = null;
+
    socket.on('message', (data) => {
       const message = typeof data === 'string' ? data : data.toString();
          try {
@@ -52,7 +55,30 @@ wsServer.on('connection', (socket: WebSocket) => {
 
             switch (type) {
                case 'CLIENT.MESSAGE.NEW_USER':
-                  handleNewUser(socket);
+                  currentUsername = payload.username;
+                  currentRoom = payload.roomId;
+                  if (currentUsername === null || currentRoom === null) {
+                     console.error('error');
+                     return;
+                  }
+                  userNicknames.set(socket, currentUsername);
+                  
+                  if (!rooms[currentRoom]) {
+                     rooms[currentRoom] = [];
+                  }
+                  rooms[currentRoom].push(socket);
+                  
+                  const usersList = Array.from(userNicknames.values())
+                     .filter(name => name !== currentUsername);
+                  socket.send(JSON.stringify({
+                     type: 'SERVER.MESSAGE.USER_LIST',
+                     payload: { users: usersList }
+                  }));
+                  
+                  broadcastToRoom(currentRoom, socket, {
+                     type: 'SERVER.MESSAGE.USER_JOINED',
+                     payload: { username: currentUsername }
+                  });
                   break;
                case 'CLIENT.MESSAGE.JOIN_ROOM':
                   currentRoom = payload.roomId;
@@ -65,17 +91,12 @@ wsServer.on('connection', (socket: WebSocket) => {
                   break;
                case 'CLIENT.MESSAGE.NEW_MESSAGE':
                   if (currentRoom) {
-                     const serverMessage = JSON.stringify({
+                     broadcastToRoom(currentRoom, socket, {
                         type: 'SERVER.MESSAGE.NEW_MESSAGE',
                         payload: {
                            message: payload.message,
                            timestamp: payload.timestamp,
-                           senderId: nextMemberIndex,
-                        }
-                     });
-                     rooms[currentRoom].forEach((client) => {
-                        if (client.readyState === WebSocket.OPEN) {
-                           client.send(serverMessage);
+                           senderNickname: currentUsername
                         }
                      });
                  }
@@ -90,12 +111,19 @@ wsServer.on('connection', (socket: WebSocket) => {
          }
    });
    socket.on('close', () => {
-      if (currentRoom && rooms[currentRoom]) {
-         rooms[currentRoom] = rooms[currentRoom].filter(client => client !== socket);
+      if (currentRoom && currentUsername) {
+         rooms[currentRoom] = rooms[currentRoom].filter(s => s !== socket);
+         userNicknames.delete(socket);
+         
+         broadcastToRoom(currentRoom, null, {
+            type: 'SERVER.MESSAGE.USER_LEFT',
+            payload: { username: currentUsername }
+         });
+         
          if (rooms[currentRoom].length === 0) {
             delete rooms[currentRoom];
          }
-      }
+     }
    });
 });
 
@@ -109,7 +137,20 @@ function broadcast(data: string, socketToOmit: WebSocket) {
    })
 };
 
-function handleNewUser(socket: WebSocket) {
+function broadcastToRoom(roomId: string, excludeSocket: WebSocket | null, message: any) {
+   if (!rooms[roomId]) return;
+   
+   const messageStr = JSON.stringify(message);
+   rooms[roomId].forEach(client => {
+      if (client !== excludeSocket && client.readyState === WebSocket.OPEN) {
+         client.send(messageStr);
+      }
+   });
+}
+
+function handleNewUser(socket: WebSocket, username: string) {
+   userNicknames.set(socket, username);
+
    // max 6 members
    if (nextMemberIndex < 6) {
      socket.send(JSON.stringify({ type: 'SERVER.MESSAGE.PLAYER_ASSIGNMENT', payload: {clientPlayerIndex: nextMemberIndex} }))
